@@ -3,6 +3,7 @@ const int ledPin = 4;  // GPIO 4 corresponde ao pino D2 na ESP8266
 
 void setup() {
   // Configura o pino do LED como saída
+  Serial.begin(9600);
   pinMode(ledPin, OUTPUT);
 }
 
