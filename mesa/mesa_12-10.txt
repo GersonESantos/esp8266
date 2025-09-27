@@ -1,0 +1,188 @@
+
+/*
+ Version 0.1 - March 17 2018
+*/ 
+
+#include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266WiFiMulti.h>
+#include <WebSocketsClient.h> //  https://github.com/kakopappa/sinric/wiki/How-to-add-dependency-libraries
+#include <ArduinoJson.h> // https://github.com/kakopappa/sinric/wiki/How-to-add-dependency-libraries
+#include <StreamString.h>
+
+ESP8266WiFiMulti WiFiMulti;
+WebSocketsClient webSocket;
+WiFiClient client;
+
+#define MyApiKey "85a6a0e2-d542-4759-aeff-ab0d0e370a8f" // TODO: Change to your sinric API Key. Your API Key is displayed on sinric.com dashboard
+#define MySSID "VIVO-1631" // TODO: Change to your Wifi network SSID
+#define MyWifiPassword "2F8A131631" // TODO: Change to your Wifi network password
+
+#define HEARTBEAT_INTERVAL 300000 // 5 Minutes 
+#define D1 2
+#define D2 4
+#define D4 17
+#define D6 12
+#define D8 15
+//dht DHT;
+
+//#define DHT11_PIN D1
+uint64_t heartbeatTimestamp = 0;
+bool isConnected = false;
+
+ 
+void turnOn(String deviceId) {
+  if (deviceId == "5d969c53de917d27fed49a81") // Device ID of first device
+  { 
+    digitalWrite(LED_BUILTIN, LOW);
+    digitalWrite(D1, LOW);
+    digitalWrite(D2, HIGH);  
+    digitalWrite(D8, HIGH);
+    Serial.print("Turn on Mesa device id: ");
+    Serial.println(deviceId);
+  } 
+  else if (deviceId == "5da1c312a0866720351abc9e") // Device ID of second device
+  { 
+    digitalWrite(D6, HIGH);
+    Serial.print("Turn on device id: ");
+    Serial.println(deviceId);
+  }
+    else if (deviceId == "5da1c400a0866720351abcdf") // Device ID of second device
+  { 
+    digitalWrite(D4, HIGH);
+    Serial.print("Turn on device id: ");
+    Serial.println(deviceId);
+  }
+  else {
+    Serial.print("Turn on for unknown device id: ");
+    Serial.println(deviceId);    
+  }     
+}
+
+void turnOff(String deviceId) {
+   if (deviceId == "5d969c53de917d27fed49a81") // Device ID of first device
+   { 
+     digitalWrite(D1, HIGH);
+     digitalWrite(D2, LOW);  
+     digitalWrite(D8, LOW);
+     Serial.print("Turn off MESA Device ID: ");
+     Serial.println(deviceId);
+   }
+   else if (deviceId == "5da1c312a0866720351abc9e") // Device ID of second device
+   { 
+    digitalWrite(D6, LOW);
+     Serial.print("Turn off Device ID: ");
+     Serial.println(deviceId);
+  }
+     else if (deviceId == "5da1c400a0866720351abcdf") // Device ID of second device
+   { 
+    digitalWrite(D4, LOW);
+     Serial.print("Turn off Device ID: ");
+     Serial.println(deviceId);
+  }
+  else {
+     Serial.print("Turn off for unknown device id: ");
+     Serial.println(deviceId);    
+  }
+}
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      isConnected = false;    
+      Serial.printf("[WSc] Webservice disconnected from sinric.com!\n");
+      break;
+    case WStype_CONNECTED: {
+      isConnected = true;
+      Serial.printf("[WSc] Service connected to sinric.com at url: %s\n", payload);
+      Serial.printf("Waiting for commands from sinric.com ...\n");        
+      }
+      break;
+    case WStype_TEXT: {
+        Serial.printf("[WSc] get text: %s\n", payload);
+        // Example payloads
+
+        // For Switch  types
+        // {"deviceId":"xxx","action":"action.devices.commands.OnOff","value":{"on":true}} // https://developers.google.com/actions/smarthome/traits/onoff
+        // {"deviceId":"xxx","action":"action.devices.commands.OnOff","value":{"on":false}}
+
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject& json = jsonBuffer.parseObject((char*)payload); 
+        String deviceId = json ["deviceId"];     
+        String action = json ["action"];
+        
+        if(action == "action.devices.commands.OnOff") { // Switch 
+            String value = json ["value"]["on"];
+            Serial.println(value); 
+            
+            if(value == "true") {
+                turnOn(deviceId);
+            } else {
+                turnOff(deviceId);
+            }
+        }
+        else if (action == "test") {
+            Serial.println("[WSc] received test command from sinric.com");
+        }
+      }
+      break;
+    case WStype_BIN:
+      Serial.printf("[WSc] get binary length: %u\n", length);
+      break;
+  }
+}
+
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(D1, OUTPUT);
+  pinMode(D2, OUTPUT);
+  pinMode(D4, OUTPUT);
+  pinMode(D6, OUTPUT);
+  pinMode(D8, OUTPUT);
+  Serial.begin(115200);
+  
+  WiFiMulti.addAP(MySSID, MyWifiPassword);
+  Serial.println();
+  Serial.print("Connecting to Wifi: ");
+  Serial.println(MySSID);  
+
+  // Waiting for Wifi connect
+  while(WiFiMulti.run() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  if(WiFiMulti.run() == WL_CONNECTED) {
+    Serial.println("");
+    Serial.print("WiFi connected. ");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+
+  // server address, port and URL
+  webSocket.begin("iot.sinric.com", 80, "/"); //"iot.sinric.com", 80
+
+  // event handler
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setAuthorization("apikey", MyApiKey);
+  
+  // try again every 5000ms if connection has failed
+  webSocket.setReconnectInterval(5000);   // If you see 'class WebSocketsClient' has no member named 'setReconnectInterval' error update arduinoWebSockets
+}
+
+void loop() {
+  webSocket.loop();
+  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+  delay(1000);                       // wait for a second
+  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+  delay(1000); 
+  if(isConnected) {
+      uint64_t now = millis();
+      
+      // Send heartbeat in order to avoid disconnections during ISP resetting IPs over night. Thanks @MacSass
+      if((now - heartbeatTimestamp) > HEARTBEAT_INTERVAL) {
+          heartbeatTimestamp = now;
+          webSocket.sendTXT("H");          
+      }
+  }   
+}
+ 
