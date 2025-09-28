@@ -9,11 +9,11 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "SUA_REDE_WIFI";
-const char* password = "SUA_SENHA";
+const char* ssid = "BRUGER_2G";
+const char* password = "Gersones68";
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   dht.begin();
   pinMode(SOIL_PIN, INPUT);
   pinMode(RAIN_PIN, INPUT);
@@ -36,5 +36,5 @@ void loop() {
   Serial.print("Temp: "); Serial.println(temp);
   Serial.print("Umidade Solo: "); Serial.println(soilMoisture);
 
-  delay(3600000); // Verifica a cada hora
+  delay(360); // Verifica a cada hora
 }

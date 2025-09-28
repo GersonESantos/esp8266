@@ -1,7 +1,7 @@
-#include <ESP8266WiFi.h>
+//#include <ESP8266WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+//#include <ESP8266WebServer.h>
+//#include <ESP8266mDNS.h>
 
 #ifndef STASSID
 #define STASSID "BRUGER_2G"
@@ -11,7 +11,7 @@
 const char* ssid = STASSID;
 const char* password = STAPSK;
 
-ESP8266WebServer server(80);
+//ESP8266WebServer server(80);
 
 const int led = 13;
 
