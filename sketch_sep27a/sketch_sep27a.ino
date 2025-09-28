@@ -1,85 +1,187 @@
-#include <DHT.h>            // Biblioteca para DHT22
-#include <ESP8266WiFi.h>    // Biblioteca para ESP8266
-#include <ThingSpeak.h>     // Biblioteca para ThingSpeak
+//Projeto de Irrigação Automatizada e Monitoramento do Solo via MQTT
+//Autores: Daniel Santos Dantas e Rafael Favaron Pereira
+//Projeto para a disciplina de Objetos Inteligentes e Conectados da Universidade Persbiteriana Mackenzie
 
-// Pinos
-#define DHTPIN 2            // Pino do DHT22
-#define DHTTYPE DHT22       // Tipo do sensor
-#define SOIL_PIN A0         // Pino do sensor de umidade do solo
-#define RAIN_PIN 3          // Pino do sensor de chuva
-#define RELAY_PIN 4         // Pino do relé
+//Incluindo as Bibliotecas da Placa NodeMCU ESP8266 para estabelecer conexão via WiFi
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
 
-// Configurações Wi-Fi e ThingSpeak
-const char* ssid = "BRUGER_2G";         // Substitua pelo nome da rede
-const char* password = "Gersones68";    // Substitua pela senha
-const char* apiKey = "SUA_API_KEY";         // API Key do ThingSpeak
-const long channelID = SEU_CHANNEL_ID;      // ID do canal no ThingSpeak
+//Definindo as variáveis e os pinos e entradas correspondentes de cada componente
+#define DEBUG
+#define pino_sinal_analogico A0
 
-// Inicializações
-DHT dht(DHTPIN, DHTTYPE);
-WiFiClient client;
+#define pino_led_vermelho 13 //5
+#define pino_led_verde 12 //7
+#define pino_bomba 14 //8 14
 
+//Variáveis
+int valor_analogico;
+String strMSG = "0";
+char mensagem[30];
+
+//Informações da Rede WIFI para conexão com o CloudMQTT, que estabelece conectividade com o Broker que fará o monitoramento dos Solos
+const char* ssid = "casazul";             //SSID da rede WIFI
+const char* password =  "internetdanieldantas";    //senha da rede wifi
+//Informações da Instância do broker MQTT
+const char* mqttServer = "postman.cloudmqtt.com";   //server
+const char* mqttUser = "aeleozfk";              //user
+const char* mqttPassword = "J0MSDy4RiaK8";      //password
+const int mqttPort = 16157;                     //port
+const char* mqttTopicSub = "jardim/bomba";      //tópico que será assinado no Broker
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+//Definindo as entradas correspondentes aos pinos e os Prints de Resposta para o monitor serial
 void setup() {
-  Serial.begin(9600);          // Inicia comunicação serial
-  dht.begin();                 // Inicia o DHT22
-  pinMode(SOIL_PIN, INPUT);    // Configura sensor de solo como entrada
-  pinMode(RAIN_PIN, INPUT);    // Configura sensor de chuva como entrada
-  pinMode(RELAY_PIN, OUTPUT);  // Configura relé como saída
-  digitalWrite(RELAY_PIN, LOW); // Relé inicia desligado
+  Serial.begin(9600);
+  pinMode(pino_sinal_analogico, INPUT);
+  pinMode(pino_led_vermelho, OUTPUT);
+  pinMode(pino_led_verde, OUTPUT);
+  pinMode(pino_bomba, OUTPUT);
 
-  // Conecta ao Wi-Fi
   WiFi.begin(ssid, password);
+
+  Serial.print("Entrando no Setup");
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+#ifdef DEBUG
+    Serial.println("Aguarde! Conectando ao WiFi...");
+#endif
   }
-  Serial.println("Conectado ao Wi-Fi!");
-  
-  ThingSpeak.begin(client);    // Inicia ThingSpeak
+#ifdef DEBUG
+  Serial.println("Conectado na rede WiFi com sucesso!");
+#endif
+
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback(callback);
+
+  while (!client.connected()) {
+#ifdef DEBUG
+    Serial.println("Conectando ao Broker MQTT...");
+#endif
+
+    if (client.connect("ESP8266Client", mqttUser, mqttPassword )) {
+#ifdef DEBUG
+      Serial.println("Conectado com sucesso");
+#endif
+
+    } else {
+#ifdef DEBUG
+      Serial.print("falha estado  ");
+      Serial.print(client.state());
+#endif
+      delay(2000);
+    }
+  }
+
+  //subscreve no tópico
+  client.subscribe(mqttTopicSub);
+
 }
 
 void loop() {
-  // Leitura dos sensores
-  float temp = dht.readTemperature();         // Temperatura em °C
-  float humidity = dht.readHumidity();        // Umidade do ar em %
-  int soilMoisture = analogRead(SOIL_PIN);    // Umidade do solo (0-1023)
-  int rain = digitalRead(RAIN_PIN);           // Chuva (0 = chuva, 1 = sem chuva)
 
-  // Verifica se as leituras são válidas
-  if (isnan(temp) || isnan(humidity)) {
-    Serial.println("Erro ao ler o DHT22!");
-    return;
+  if (!client.connected()) {
+    Serial.print("Passou no Connected");
+    reconect();
+
   }
+ 
+  Serial.print(valor_analogico);
+  //Lendo o valor do pino A0 do sensor para detecção
+  valor_analogico = analogRead(pino_sinal_analogico);
 
-  // Lógica de irrigação
-  if (soilMoisture < 300 && rain == 1) { // Solo seco (ajuste o valor conforme o sensor) e sem chuva
-    digitalWrite(RELAY_PIN, HIGH);       // Liga a irrigação
-    Serial.println("Irrigação ligada!");
-    delay(600000);                       // 10 minutos (600000 ms)
-    digitalWrite(RELAY_PIN, LOW);        // Desliga a irrigação
-    Serial.println("Irrigação desligada!");
-  } else {
-    Serial.println("Irrigação não necessária.");
+  //Mostrando o valor da porta analógica no serial monitor
+  Serial.print("Porta analogica: ");
+  Serial.print(valor_analogico);
+
+  //Definindo o parâmetro para um Solo devidamente úmido, acendendo o LED VERDE
+    if (valor_analogico >= 0 && valor_analogico < 500)
+    {
+      Serial.println("Status: Solo umido");
+    
+      digitalWrite (pino_led_vermelho, LOW);
+      digitalWrite (pino_led_verde, HIGH);
+      digitalWrite (pino_bomba, HIGH);
+  
+      //Enviando Mensagem ao Broker
+      sprintf(mensagem, "0"); //Definindo o valor zero como parâmetro para o Broker mostrar uma imagem "vermelha"
+      Serial.print("Mensagem enviada: ");
+      Serial.println(mensagem);
+      client.publish("jardim/bomba", mensagem);
+      Serial.println("Mensagem enviada com sucesso...");
+  
+    }
+
+ 
+  //Definindo o parâmetro para um Solo Seco, acendendo o LED VERMELHO
+    if (valor_analogico >= 500 && valor_analogico <= 1024)
+    {
+      Serial.println(" Status: Solo seco");
+      
+      digitalWrite (pino_led_verde, LOW);
+      digitalWrite (pino_led_vermelho, HIGH);
+      digitalWrite (pino_bomba, LOW);
+  
+       //Enviando Mensagem ao Broker
+      sprintf(mensagem, "1"); //Definindo o valor UM como parâmetro para o Broker mostrar uma imagem "verde"
+      Serial.print("Mensagem enviada: ");
+      Serial.println(mensagem); 
+      client.publish("jardim/bomba", mensagem);
+      Serial.println("Mensagem enviada com sucesso...");
+  
+    }
+  delay(10000);
+
+  client.loop();
+
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+
+  //Armazenando mensagem recebida em uma string
+  payload[length] = '\0';
+  strMSG = String((char*)payload);
+
+#ifdef DEBUG
+  Serial.print("Mensagem chegou do tópico: ");
+  Serial.println(topic);
+  Serial.print("Mensagem:");
+  Serial.print(strMSG);
+  Serial.println();
+  Serial.println("-----------------------");
+#endif
+
+}
+
+//Função pra reconectar ao servidor MQTT
+void reconect() {
+  //Enquanto estiver desconectado
+  while (!client.connected()) {
+#ifdef DEBUG
+    Serial.print("Tentando conectar ao servidor MQTT");
+#endif
+
+    bool conectado = strlen(mqttUser) > 0 ?
+                     client.connect("ESP8266Client", mqttUser, mqttPassword) :
+                     client.connect("ESP8266Client");
+
+    if (conectado) {
+#ifdef DEBUG
+      Serial.println("Conectado!");
+#endif
+      //Subscreve no tópico
+      client.subscribe(mqttTopicSub, 1); //nivel de qualidade: QoS 1
+    } else {
+#ifdef DEBUG
+      Serial.println("Falha durante a conexão.Code: ");
+      Serial.println( String(client.state()).c_str());
+      Serial.println("Tentando novamente em 10 s");
+#endif
+      //Aguarda 10 segundos
+      delay(5000);
+    }
   }
-
-  // Envio de dados ao ThingSpeak
-  ThingSpeak.setField(1, temp);          // Campo 1: Temperatura
-  ThingSpeak.setField(2, humidity);      // Campo 2: Umidade do ar
-  ThingSpeak.setField(3, soilMoisture);  // Campo 3: Umidade do solo
-  ThingSpeak.setField(4, rain);          // Campo 4: Estado da chuva
-
-  int response = ThingSpeak.writeFields(channelID, apiKey);
-  if (response == 200) {
-    Serial.println("Dados enviados ao ThingSpeak com sucesso!");
-  } else {
-    Serial.println("Erro ao enviar dados: " + String(response));
-  }
-
-  // Exibe dados no monitor serial
-  Serial.print("Temperatura: "); Serial.print(temp); Serial.println("°C");
-  Serial.print("Umidade Ar: "); Serial.print(humidity); Serial.println("%");
-  Serial.print("Umidade Solo: "); Serial.println(soilMoisture);
-  Serial.print("Chuva: "); Serial.println(rain == 0 ? "Sim" : "Não");
-
-  delay(3600000); // Aguarda 1 hora (3600000 ms) para próxima leitura
 }
