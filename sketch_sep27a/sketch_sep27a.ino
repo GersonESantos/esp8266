@@ -10,8 +10,8 @@
 #define RELAY_PIN 4         // Pino do relé
 
 // Configurações Wi-Fi e ThingSpeak
-const char* ssid = "SUA_REDE_WIFI";         // Substitua pelo nome da rede
-const char* password = "SUA_SENHA_WIFI";    // Substitua pela senha
+const char* ssid = "BRUGER_2G";         // Substitua pelo nome da rede
+const char* password = "Gersones68";    // Substitua pela senha
 const char* apiKey = "SUA_API_KEY";         // API Key do ThingSpeak
 const long channelID = SEU_CHANNEL_ID;      // ID do canal no ThingSpeak
 
