@@ -17,7 +17,9 @@ void loop() {
   //Mapeando o valor do sensor para novos valores mais compreensiveis
   int porcentagem = map(valorSensor, molhado, seco, 100, 0);
   Serial.println(porcentagem);
-
+  String estadoSolo = (porcentagem < 70) ? "WET" : "DRY";
+  Serial.print(" | Estado: ");
+  Serial.println(estadoSolo);
   if(porcentagem >= 70){ // Nao rega
     digitalWrite(rele, HIGH);
     Serial.println("Status: Solo seco. Bomba LIGADA.");
