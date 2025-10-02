@@ -66,7 +66,7 @@ void setup() {
   Serial.begin(BAUD_RATE);
   pinMode(PINO_RELE, OUTPUT);
   // Garante que a bomba comece desligada (enviando sinal HIGH para um relé Active LOW)
- //digitalWrite(PINO_RELE, HIGH); 
+  digitalWrite(PINO_RELE, HIGH); 
   
   setupWiFi();
   setupSinricPro();
@@ -78,27 +78,22 @@ void loop() {
 
   if (millis() - ultimaLeitura >= intervaloLeitura) {
     int valorSensor = analogRead(PINO_SENSOR_UMIDADE);
-    int perct = map(valorSensor, SENSOR_SECO, SENSOR_MOLHADO, 100, 0);
-    //perct = constrain(perct, 0, 100);
+    int perct = map(valorSensor, SENSOR_SECO, SENSOR_MOLHADO, 0, 100);
+    perct = constrain(perct, 0, 100);
 
-    
+    Serial.print("Umidade do solo: ");
+    Serial.print(perct);
+    Serial.println("%");
 
     // Lógica de controle do relé (CORRIGIDA PARA ACTIVE LOW)
     if (perct >= LIMITE_UMIDADE_MINIMA) {
-      // Se o solo está úmido, DESLIGA o relé (enviando sinal HIGH)
-      digitalWrite(PINO_RELE, LOW);
-      Serial.println("Status: Solo úmido. Bomba DESLIGADA.");
-      Serial.print("Umidade do solo: ");
-      Serial.print(perct);
-      Serial.println("%");
-    } else {
       // Se o solo está seco, LIGA o relé (enviando sinal LOW)
       digitalWrite(PINO_RELE, HIGH);
       Serial.println("Status: Solo seco. Bomba LIGADA.");
-      Serial.print("Umidade do solo: ");
-      Serial.print(perct);
-      Serial.println("%");
-      
+    } else {
+      // Se o solo está úmido, DESLIGA o relé (enviando sinal HIGH)
+      digitalWrite(PINO_RELE, LOW);
+      Serial.println("Status: Solo úmido. Bomba DESLIGADA.");
     }
 
     // Envia os dados atualizados para o Sinric Pro / Alexa

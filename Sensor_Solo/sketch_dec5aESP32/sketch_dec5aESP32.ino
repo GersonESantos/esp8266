@@ -2,7 +2,7 @@
 const int rele = 12;
 const int seco = 686;
 const int molhado = 360;
-const int tempoDeRega = 2400; // Equivale a 4min
+const int tempoDeRega = 1000; // Equivale a 4min
 // ------------------------------------------------
  
 void setup() {
