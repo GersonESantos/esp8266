@@ -29,24 +29,16 @@
 
 #define APP_KEY    "89cda427-c430-4127-9a60-afd89f2364d7"
 #define APP_SECRET "a4993c6e-91d9-4b84-97f6-373c1d78789b-72975cde-8f6e-4ff5-b9a1-b67a298291b5"
-#define SOIL_DEVICE_ID  "68daf7175918d860c09da1fb"
+#define SOIL_DEVICE_ID  "68df50c05918d860c09f0b6c"
+#define PUMP_DEVICE_ID  "68df4f4a5918d860c09f0b00"  // Switch (for pump)
 #define SSID       "BRUGER_2G"
 #define PASS       "Gersones68"
 #define BAUD_RATE  115200
 
-
-
-
-
-
-
-#define PUMP_DEVICE_ID  "68d98569c6b3a7ebd1b62c43"  // Switch (for pump)
-
-
 #define SSID       "BRUGER_2G"
 #define PASS       "Gersones68"
 // ---- Hardware Pins ----
-const int RELAY_PIN = 13;   // Relay for pump (active LOW)
+const int RELAY_PIN = 12;   // Relay for pump (active LOW)
 const int SOIL_PIN  = 34;   // Soil sensor ADC pin
 
 // ---- Calibration values (adjust for your sensor) ----
