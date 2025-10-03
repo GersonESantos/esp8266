@@ -1,15 +1,18 @@
-/********************************************************
- * PROJETO MESCLADO: Sensor de Umidade com Relé e Sinric Pro
- * Lógica do Relé Corrigida para Módulos "Active LOW"
- ********************************************************/
+/****************************************************************
+ * PROJETO FINAL MESCLADO: Sensor de Umidade com Relé e Sinric Pro
+ * Combina a leitura de hardware com a estrutura de comunicação
+ * do exemplo Sinric Pro.
+ ****************************************************************/
 
 // Bibliotecas
 #include <Arduino.h>
-#include <WiFi.h>
+#ifdef ESP32
+  #include <WiFi.h>
+#endif
 #include <SinricPro.h>
 #include "SensordeUmidadeDoSolo.h" // Garanta que este arquivo .h está na mesma pasta
 
-// --- Definições de Hardware e Lógica ---
+// --- Definições de Hardware e Lógica (DO SEU PRIMEIRO CÓDIGO) ---
 // Valores de calibração do sensor (AJUSTE CONFORME SEU SENSOR)
 const int SENSOR_SECO = 686;    // Valor ADC lido com o sensor no ar
 const int SENSOR_MOLHADO = 360; // Valor ADC lido com o sensor na água
@@ -29,82 +32,104 @@ const int LIMITE_UMIDADE_MINIMA = 70; // Em %. A bomba liga se a umidade for MEN
 #define PASS       "Gersones68"
 #define BAUD_RATE  115200
 
-// --- Variáveis Globais ---
+// --- Variáveis Globais para o Sensor (DO SEU PRIMEIRO CÓDIGO) ---
 unsigned long ultimaLeitura = 0;
-const unsigned long intervaloLeitura = 2000; // Ler a cada 2 segundos
+const unsigned long intervaloLeitura = 5000; // Ler a cada 5 segundos para estabilidade
 
 SensordeUmidadeDoSolo &sensordeUmidadeDoSolo = SinricPro[DEVICE_ID];
 
-// --- Callbacks e Eventos Sinric Pro (sem alterações) ---
-bool onRangeValue(const String &deviceId, const String& instance, int &rangeValue) { return true; }
-bool onAdjustRangeValue(const String &deviceId, const String& instance, int &valueDelta) { return true; }
-bool onSetMode(const String& deviceId, const String& instance, String &mode) { return true; }
-void updateRangeValue(String instance, int value) { sensordeUmidadeDoSolo.sendRangeValueEvent(instance, value); }
-void updateMode(String instance, String mode) { sensordeUmidadeDoSolo.sendModeEvent(instance, mode, "PHYSICAL_INTERACTION"); }
+// --- Callbacks e Eventos Sinric Pro (Estrutura do segundo código) ---
+// Callbacks são chamados quando você envia um comando PELO APP/ALEXA
+bool onRangeValue(const String &deviceId, const String& instance, int &rangeValue) {
+  Serial.printf("[SinricPro]: Recebido comando para definir RangeValue para %d (não utilizado neste projeto).\n", rangeValue);
+  return true;
+}
+
+bool onAdjustRangeValue(const String &deviceId, const String& instance, int &valueDelta) {
+  Serial.printf("[SinricPro]: Recebido comando para ajustar RangeValue em %d (não utilizado neste projeto).\n", valueDelta);
+  return true;
+}
+
+bool onSetMode(const String& deviceId, const String& instance, String &mode) {
+  Serial.printf("[SinricPro]: Recebido comando para definir o Modo para %s (não utilizado neste projeto).\n", mode.c_str());
+  return true;
+}
 
 // --- Funções de Configuração ---
 void setupSinricPro() {
   sensordeUmidadeDoSolo.onRangeValue("rangeInstance1", onRangeValue);
   sensordeUmidadeDoSolo.onAdjustRangeValue("rangeInstance1", onAdjustRangeValue);
   sensordeUmidadeDoSolo.onSetMode("modeInstance1", onSetMode);
-  SinricPro.onConnected([]{ Serial.printf("[SinricPro]: Conectado\r\n"); });
-  SinricPro.onDisconnected([]{ Serial.printf("[SinricPro]: Desconectado\r\n"); });
+
+  SinricPro.onConnected([]{ Serial.printf("[SinricPro]: Conectado ao servidor.\n"); });
+  SinricPro.onDisconnected([]{ Serial.printf("[SinricPro]: Desconectado do servidor.\n"); });
   SinricPro.begin(APP_KEY, APP_SECRET);
 };
 
 void setupWiFi() {
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(SSID, PASS);
   Serial.printf("[WiFi]: Conectando a %s", SSID);
   while (WiFi.status() != WL_CONNECTED) {
     Serial.printf(".");
     delay(250);
   }
-  Serial.printf(" conectado, IP: %s\r\n", WiFi.localIP().toString().c_str());
+  Serial.printf(" conectado, IP: %s\n", WiFi.localIP().toString().c_str());
 }
 
 void setup() {
   Serial.begin(BAUD_RATE);
+  
+  // Configuração do pino do relé (do seu primeiro código)
   pinMode(PINO_RELE, OUTPUT);
-  // Garante que a bomba comece desligada (enviando sinal HIGH para um relé Active LOW)
- //digitalWrite(PINO_RELE, HIGH); 
+  // Garante que a bomba comece desligada (sinal HIGH para um relé Active LOW)
+  digitalWrite(PINO_RELE, HIGH); 
   
   setupWiFi();
   setupSinricPro();
 }
 
-// --- Loop Principal ---
+
+// --- Loop Principal (LÓGICA DO SENSOR INSERIDA AQUI) ---
 void loop() {
-  SinricPro.handle();
+  SinricPro.handle(); // Essencial para manter a comunicação
 
+  // Lógica de leitura do sensor a cada X segundos (do seu primeiro código)
   if (millis() - ultimaLeitura >= intervaloLeitura) {
+    ultimaLeitura = millis();
+
     int valorSensor = analogRead(PINO_SENSOR_UMIDADE);
-    int perct = map(valorSensor, SENSOR_SECO, SENSOR_MOLHADO, 100, 0);
-    //perct = constrain(perct, 0, 100);
-
     
+    // LÓGICA DE MAPEAMENTO CORRIGIDA: Seco=0%, Molhado=100%
+    int perct = map(valorSensor, SENSOR_SECO, SENSOR_MOLHADO, 0, 100);
+    perct = constrain(perct, 0, 100); // Garante que o valor esteja sempre entre 0 e 100
 
-    // Lógica de controle do relé (CORRIGIDA PARA ACTIVE LOW)
-    if (perct >= LIMITE_UMIDADE_MINIMA) {
-      // Se o solo está úmido, DESLIGA o relé (enviando sinal HIGH)
-      digitalWrite(PINO_RELE, LOW);
-      Serial.println("Status: Solo úmido. Bomba DESLIGADA.");
-      Serial.print("Umidade do solo: ");
-      Serial.print(perct);
-      Serial.println("%");
-    } else {
-      // Se o solo está seco, LIGA o relé (enviando sinal LOW)
-      digitalWrite(PINO_RELE, HIGH);
+    Serial.println("-------------------------");
+    Serial.printf("Leitura ADC: %d -> Umidade: %d%%\n", valorSensor, perct);
+
+    // Lógica de controle do relé
+    if (perct < LIMITE_UMIDADE_MINIMA) {
+      digitalWrite(PINO_RELE, LOW); // LIGA a bomba (relé Active LOW)
       Serial.println("Status: Solo seco. Bomba LIGADA.");
-      Serial.print("Umidade do solo: ");
-      Serial.print(perct);
-      Serial.println("%");
-      
+    } else {
+      digitalWrite(PINO_RELE, HIGH); // DESLIGA a bomba (relé Active LOW)
+      Serial.println("Status: Solo úmido. Bomba DESLIGADA.");
     }
 
     // Envia os dados atualizados para o Sinric Pro / Alexa
-    updateRangeValue("rangeInstance1", perct);
-    updateMode("modeInstance1", (perct < LIMITE_UMIDADE_MINIMA) ? "Dry" : "Wet");
-    
-    ultimaLeitura = millis();
+    Serial.printf("[SinricPro]: Enviando umidade (%d%%) para o dashboard...\n", perct);
+    sensordeUmidadeDoSolo.sendRangeValueEvent("rangeInstance1", perct);
+
+    // AQUI ESTÁ A CORREÇÃO: Adicionado o terceiro parâmetro "PHYSICAL_INTERACTION"
+    sensordeUmidadeDoSolo.sendModeEvent("modeInstance1", (perct < LIMITE_UMIDADE_MINIMA) ? "Dry" : "Wet", "PHYSICAL_INTERACTION");
   }
 }
+
+
+
+
+
+
+
+
