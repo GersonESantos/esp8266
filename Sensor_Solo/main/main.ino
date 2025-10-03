@@ -14,8 +14,8 @@
 
 // --- Definições de Hardware e Lógica (DO SEU PRIMEIRO CÓDIGO) ---
 // Valores de calibração do sensor (AJUSTE CONFORME SEU SENSOR)
-const int SENSOR_SECO = 686;    // Valor ADC lido com o sensor no ar
-const int SENSOR_MOLHADO = 360; // Valor ADC lido com o sensor na água
+const int SENSOR_SECO = 1200;    // Valor ADC lido com o sensor no ar
+const int SENSOR_MOLHADO = 2500; // Valor ADC lido com o sensor na água
 
 // Pinos de hardware
 const int PINO_SENSOR_UMIDADE = 34;
@@ -107,6 +107,7 @@ void loop() {
 
     Serial.println("-------------------------");
     Serial.printf("Leitura ADC: %d -> Umidade: %d%%\n", valorSensor, perct);
+    Serial.printf(" SENSOR_SECO-> %d SENSOR_MOLHADO  %d\n", SENSOR_SECO, SENSOR_MOLHADO);
 
     // Lógica de controle do relé
     if (perct < LIMITE_UMIDADE_MINIMA) {
