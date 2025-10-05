@@ -23,7 +23,7 @@
 #include <SinricProSwitch.h>
 #include <ESPAsyncWebServer.h> // Para o servidor web local
 #include "CapacitiveSoilMoistureSensor.h" // Sua biblioteca customizada para o sensor de solo
-#include <DHT.h> // Biblioteca para o sensor DHT
+#include <DHT.h> // NOVO: Biblioteca para o sensor DHT
 
 // --- Credenciais e IDs ---
 #define WIFI_SSID       "BRUGER_2G"
@@ -36,8 +36,8 @@
 // ---- Hardware Pins ----
 const int RELAY_PIN = 12;   // Relay for pump (active HIGH)
 const int SOIL_PIN  = 34;   // Soil sensor ADC pin
-const int DHT_PIN   = 27;   // Pino para o sensor DHT22
-#define DHTTYPE     DHT22   // Define o tipo de sensor DHT (DHT11, DHT21, DHT22)
+const int DHT_PIN   = 27; // Pino para o sensor DHT22
+#define DHTTYPE     DHT22 // Define o tipo de sensor DHT (DHT11, DHT21, DHT22)
 
 // ---- Calibration values (adjust for your sensor) ----
 const int VERY_DRY  = 2910;
@@ -56,7 +56,7 @@ float temperature = 0.0;   // Armazena a leitura de temperatura do DHT
 float humidity    = 0.0;   // Armazena a leitura de umidade do ar do DHT
 
 // Objetos de sensores
-DHT dht(DHT_PIN, DHTTYPE); // Objeto do sensor DHT
+DHT dht(DHT_PIN, DHTTYPE); // NOVO: Objeto do sensor DHT
 
 // Objetos SinricPro (DO NOT ALTERAR)
 CapacitiveSoilMoistureSensor &soilSensor = SinricPro[SOIL_DEVICE_ID];
@@ -123,9 +123,6 @@ void setupWiFi() {
     delay(300);
   }
   Serial.println(" connected!");
-  // O IP dinâmico é impresso aqui, como no seu código original
-  Serial.print("[IP Dinâmico]: ");
-  Serial.println(WiFi.localIP());
 }
 
 // ---- Setup Sinric Pro (DO NOT ALTERAR) ----
@@ -427,27 +424,23 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW); // Pump OFF at start for active HIGH relay
   pinMode(SOIL_PIN, INPUT);
-  dht.begin(); // Inicializa o sensor DHT para uso na web
+  dht.begin(); // NOVO: Inicializa o sensor DHT para uso na web
   
   setupWiFi();
   setupSinricPro();
 
-  // Configura as rotas do servidor web local
+  // Configura as rotas do servidor web local (NOVO)
   server.on("/", HTTP_GET, handleRoot);
   server.on("/data", HTTP_GET, handleData);
   server.on("/toggle_pump", HTTP_GET, handleTogglePump);
   server.begin(); // Inicia o servidor web
-    
-  Serial.println("[Server] Servidor Web local iniciado.");
-  // NOVO: Mensagem com o IP fixo para acesso ao painel web
-  Serial.println("Acesse o painel web em: http://192.168.0.116/"); 
-  Serial.println("Setup finalizado. Sistema pronto.");
 }
 
 // ---- Arduino Loop ----
 void loop() {
   SinricPro.handle();       // Mantém a conexão SinricPro (DO NOT ALTERAR)
   handleSoilMoisture();     // Lida com o sensor de solo e envia para SinricPro (DO NOT ALTERAR)
+  // server.handleClient(); // Não é necessário para ESPAsyncWebServer
   // A leitura do DHT agora é feita diretamente em handleData() quando a web solicita.
   // Isso evita leituras desnecessárias se ninguém estiver visualizando a página web.
 }
