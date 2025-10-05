@@ -1,13 +1,27 @@
-/***********************************************************************
- * PROJETO: Estação de Irrigação Híbrida (Painel Web + SinricPro)
- * DESCRIÇÃO: Controla uma bomba e monitora sensores através de um 
- * painel web local e da plataforma de nuvem SinricPro (Alexa/Google).
- * VERSÃO FINAL CORRIGIDA
- ***********************************************************************/
+/**********************************************************************************
+ *  TITLE: Plant Watering system using ESP32 Sinric Pro, Moisture Sensor (For Active-LOW Relay module)
+ *  Click on the following links to learn more. 
+ *  YouTube Video: https://youtu.be/MmbmNIKxfEI
+ *  Related Blog : https://iotcircuithub.com/esp32-projects/
+ *  
+ *  This code is provided free for project purpose and fair use only.
+ *  Please do mail us to techstudycell@gmail.com if you want to use it commercially.
+ *  Copyrighted © by Tech StudyCell
+ *  
+ *  Preferences--> Aditional boards Manager URLs : 
+ *  https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_dev_index.json, http://arduino.esp8266.com/stable/package_esp8266com_index.json
+ *  
+ *  Download Board ESP32 (2.0.3) : https://github.com/espressif/arduino-esp32
+ *
+ *  Download the libraries 
+ *  SinricPro Library (3.5.2): https://github.com/sinricpro/esp8266-esp32-sdk/
+ *  ArduinoJson by Benoit Blanchon (minimum Version 7.0.3)
+ *  WebSockets by Markus Sattler (minimum Version 2.4.0)
+**********************************************************************************/
 
-// --- Bibliotecas ---
 #include <Arduino.h>
 #include <WiFi.h>
+
 #include <ESPAsyncWebServer.h>
 #include <DHT.h>
 #include <SinricPro.h>
