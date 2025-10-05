@@ -134,9 +134,7 @@ void setupSinricPro() {
 void setup() {
   Serial.begin(BAUD_RATE); // Usando BAUD_RATE definido
   pinMode(RELAY_PIN, OUTPUT);
-  // Garante que a bomba comece DESLIGADA. 
-  // Se o relé liga com HIGH, deve iniciar com LOW.
-  digitalWrite(RELAY_PIN, LOW); 
+   digitalWrite(RELAY_PIN, LOW); 
   pinMode(SOIL_PIN, INPUT);
   
   setupWiFi();
@@ -145,9 +143,6 @@ void setup() {
 
 // ---- Arduino Loop ----
 void loop() {
-  // **ALTERAÇÃO AQUI:** Removida a linha incorreta que imprimia o número do pino.
-  // A leitura real do sensor e a porcentagem serão mostradas pela função handleSoilMoisture().
-  
   SinricPro.handle();
   handleSoilMoisture();
 }
