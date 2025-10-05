@@ -3,7 +3,7 @@
  * (For Active-LOW Relay module with Active-HIGH logic override)
  * * Este código mescla a funcionalidade original do SinricPro para controle
  * de bomba e leitura de sensor de umidade do solo, com uma interface
- * web local moderna para visualização e controle de dados do DHT.
+ * web local moderna para visualização e controle.
  *
  * Créditos originais do SinricPro: Tech StudyCell (links abaixo)
  * YouTube Video: https://youtu.be/MmbmNIKxfEI
@@ -14,16 +14,14 @@
  * - ESPAsyncWebServer (instale via Gerenciador de Bibliotecas)
  * - AsyncTCP (dependência do ESPAsyncWebServer, instale via Gerenciador de Bibliotecas)
  * - CapacitiveSoilMoistureSensor.h (sua biblioteca customizada, deve estar na pasta do sketch)
- * - DHT sensor library (instale via Gerenciador de Bibliotecas)
  ***********************************************************************/
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SinricPro.h>
 #include <SinricProSwitch.h>
-#include <ESPAsyncWebServer.h> // Para o servidor web local
+#include <ESPAsyncWebServer.h> // NOVO: Para o servidor web local
 #include "CapacitiveSoilMoistureSensor.h" // Sua biblioteca customizada para o sensor de solo
-#include <DHT.h> // NOVO: Biblioteca para o sensor DHT
 
 // --- Credenciais e IDs ---
 #define WIFI_SSID       "BRUGER_2G"
@@ -36,8 +34,6 @@
 // ---- Hardware Pins ----
 const int RELAY_PIN = 12;   // Relay for pump (active HIGH)
 const int SOIL_PIN  = 34;   // Soil sensor ADC pin
-const int DHT_PIN   = 27; // Pino para o sensor DHT22
-#define DHTTYPE     DHT22 // Define o tipo de sensor DHT (DHT11, DHT21, DHT22)
 
 // ---- Calibration values (adjust for your sensor) ----
 const int VERY_DRY  = 2910;
@@ -47,27 +43,26 @@ const int DRY_PUSH_NOTIFICATION_THRESHHOLD = 2850;
 const int UNPLUGGED = 3000;
 
 // ---- Globals (compartilhadas entre SinricPro e Web Server) ----
-int lastSoilMoisture = 0; // Usado pelo SinricPro para detectar mudanças e para o Web Server
+int lastSoilMoisture = 0; // Usado pelo SinricPro para detectar mudanças
 String lastSoilState = ""; // Usado pelo SinricPro para detectar mudanças
 
-// Variáveis para a interface web (e para o DHT)
+// Variáveis para a interface web
 bool  pumpState   = false; // Estado atual da bomba
-float temperature = 0.0;   // Armazena a leitura de temperatura do DHT
-float humidity    = 0.0;   // Armazena a leitura de umidade do ar do DHT
-
-// Objetos de sensores
-DHT dht(DHT_PIN, DHTTYPE); // NOVO: Objeto do sensor DHT
+// soilMoistureRaw será o valor de 'lastSoilMoisture' para o web server
+float temperature = 0.0;   // Sem DHT, será 0.0 para a interface web
+float humidity    = 0.0;   // Sem DHT, será 0.0 para a interface web
 
 // Objetos SinricPro (DO NOT ALTERAR)
 CapacitiveSoilMoistureSensor &soilSensor = SinricPro[SOIL_DEVICE_ID];
 SinricProSwitch &pumpSwitch = SinricPro[PUMP_DEVICE_ID];
 
 // Objeto do Servidor Web
-AsyncWebServer server(80); // Objeto do servidor web assíncrono
+AsyncWebServer server(80); // NOVO: Objeto do servidor web assíncrono
 
 // ---- Pump Control (DO NOT ALTERAR) ----
 bool onPowerState(const String& deviceId, bool &state) {
   if (deviceId == PUMP_DEVICE_ID) {
+    // Lógica invertida para que 'state=true' (ON) envie HIGH.
     digitalWrite(RELAY_PIN, state ? HIGH : LOW); // Agora HIGH liga a bomba, LOW desliga
     pumpState = state; // Sincroniza o estado global da bomba
     Serial.printf("Pump %s\r\n", state ? "ON" : "OFF");
@@ -94,14 +89,17 @@ void handleSoilMoisture() {
     return;
   }
 
+  // Inverte os rótulos "Dry" e "Wet"
   String soilState = (rawValue > NEITHER_DRY_OR_WET) ? "Wet" : "Dry"; // Se rawValue alto (mais seco), agora é "Wet", senão "Dry"
   if (soilState != lastSoilState) {
     soilSensor.sendModeEvent("modeInstance1", soilState, "PHYSICAL_INTERACTION");
     lastSoilState = soilState;
   }
 
+  // Update Range: % value
   soilSensor.sendRangeValueEvent("rangeInstance1", percentage);
 
+  // Push Notifications
   if (rawValue > DRY_PUSH_NOTIFICATION_THRESHHOLD) {
     soilSensor.sendPushNotification("Plants are too dry. Please water them!");
   }
@@ -355,11 +353,13 @@ const char index_html[] PROGMEM = R"rawliteral(
                     document.getElementById("circleSoil").setAttribute("stroke-dasharray", moisturePercent.toFixed(0) + ", 100");
                     
                     // Atualiza o medidor de temperatura
-                    const tempPercent = data.temperature / 50 * 100; // Mapeia 0-50°C para 0-100%
+                    // Como não há DHT, a temperatura será 0.0
+                    const tempPercent = data.temperature / 50 * 100; 
                     document.getElementById("tempValue").textContent = data.temperature.toFixed(1) + "°C";
                     document.getElementById("circleTemp").setAttribute("stroke-dasharray", Math.min(100, Math.max(0, tempPercent)).toFixed(0) + ", 100");
                     
                     // Atualiza o medidor de umidade do ar
+                    // Como não há DHT, a umidade do ar será 0.0
                     document.getElementById("humidityValue").textContent = data.humidity.toFixed(1) + "%";
                     document.getElementById("circleHumidity").setAttribute("stroke-dasharray", data.humidity.toFixed(0) + ", 100");
                 })
@@ -381,18 +381,6 @@ void handleRoot(AsyncWebServerRequest *request) {
 }
 
 void handleData(AsyncWebServerRequest *request) {
-    // Lê o sensor DHT APENAS para a interface web
-    float currentTemp = dht.readTemperature();
-    float currentHum = dht.readHumidity();
-
-    if (isnan(currentTemp) || isnan(currentHum)) {
-        Serial.println("[DHT Web] Falha ao ler do sensor DHT para a web! Usando últimos valores.");
-        // Mantém os valores antigos de 'temperature' e 'humidity' se a leitura falhar
-    } else {
-        temperature = currentTemp; // Atualiza a variável global para a web
-        humidity = currentHum;     // Atualiza a variável global para a web
-    }
-
     // Usa o valor de umidade do solo atualizado pela função SinricPro
     int soilPercent = map(lastSoilMoisture, VERY_DRY, VERY_WET, 0, 100);
     soilPercent = constrain(soilPercent, 0, 100);
@@ -400,8 +388,8 @@ void handleData(AsyncWebServerRequest *request) {
     String json = "{";
     json += "\"pumpState\":" + String(pumpState ? "true" : "false") + ",";
     json += "\"soilPercent\":" + String(soilPercent) + ",";
-    json += "\"temperature\":" + String(temperature, 1) + ","; // Agora usa a leitura do DHT
-    json += "\"humidity\":" + String(humidity, 1);             // Agora usa a leitura do DHT
+    json += "\"temperature\":" + String(temperature, 1) + ","; // Valor 0.0 pois DHT foi desconsiderado
+    json += "\"humidity\":" + String(humidity, 1);             // Valor 0.0 pois DHT foi desconsiderado
     json += "}";
     request->send(200, "application/json", json);
 }
@@ -424,7 +412,6 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW); // Pump OFF at start for active HIGH relay
   pinMode(SOIL_PIN, INPUT);
-  dht.begin(); // NOVO: Inicializa o sensor DHT para uso na web
   
   setupWiFi();
   setupSinricPro();
@@ -441,6 +428,4 @@ void loop() {
   SinricPro.handle();       // Mantém a conexão SinricPro (DO NOT ALTERAR)
   handleSoilMoisture();     // Lida com o sensor de solo e envia para SinricPro (DO NOT ALTERAR)
   // server.handleClient(); // Não é necessário para ESPAsyncWebServer
-  // A leitura do DHT agora é feita diretamente em handleData() quando a web solicita.
-  // Isso evita leituras desnecessárias se ninguém estiver visualizando a página web.
 }
