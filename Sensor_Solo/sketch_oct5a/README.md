@@ -64,8 +64,6 @@ Claro! Aqui está uma explicação completa do código, formatada em Markdown, i
 
 ---
 
-# Sistema de Irrigação Wi-Fi com ESP32
-Claro\! Aqui está uma explicação completa do código, formatada em Markdown, ideal para um arquivo `README.md`.
 
 -----
 
