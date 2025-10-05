@@ -44,9 +44,9 @@ const int RELAY_PIN = 12;   // Relay for pump (ASSUMINDO agora Active HIGH para 
 const int SOIL_PIN  = 34;   // Soil sensor ADC pin
 
 // ---- Calibration values (adjust for your sensor) ----
-const int VERY_DRY  = 1910;
+const int VERY_DRY  = 2910;
 const int NEITHER_DRY_OR_WET = 2098;
-const int VERY_WET  = 625;
+const int VERY_WET  = 925;
 const int DRY_PUSH_NOTIFICATION_THRESHHOLD = 2850;
 const int UNPLUGGED = 3000;
 
@@ -79,12 +79,11 @@ void handleSoilMoisture() {
   int percentage = map(rawValue, VERY_WET, VERY_DRY, 100, 0);
   percentage = constrain(percentage, 1, 100);
 
-  // **ALTERAÇÃO AQUI:** Esta linha agora é garantida a ser impressa sempre que uma leitura acontece.
-  Serial.printf("Leitura do Sensor ADC: %d | Umidade: %d%%\r\n", rawValue, percentage); 
+  Serial.printf("Soil ADC: %d | Moisture: %d%%\r\n", rawValue, percentage);
 
   if (rawValue == lastSoilMoisture) {
-    Serial.println("Nenhuma mudança significativa na umidade do solo, pulando atualização do SinricPro...");
-    return; // Apenas para pular o envio ao SinricPro se não houver mudança.
+    Serial.println("No change in soil moisture, skipping update...");
+    return;
   }
 
   // Update Mode: Wet / Dry
@@ -99,10 +98,10 @@ void handleSoilMoisture() {
 
   // Push Notifications
   if (rawValue > DRY_PUSH_NOTIFICATION_THRESHHOLD) {
-    soilSensor.sendPushNotification("As plantas estão muito secas. Por favor, regue!");
+    soilSensor.sendPushNotification("Plants are too dry. Please water them!");
   }
   if (rawValue > UNPLUGGED) {
-    soilSensor.sendPushNotification("O sensor de solo pode estar desconectado!");
+    soilSensor.sendPushNotification("Soil sensor may be unplugged!");
   }
 
   lastSoilMoisture = rawValue;
@@ -113,41 +112,39 @@ void setupWiFi() {
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.begin(SSID, PASS);
-  Serial.printf("[WiFi]: Conectando a %s", SSID);
+  Serial.printf("[WiFi]: Connecting to %s", SSID);
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(300);
   }
-  Serial.println(" conectado!");
+  Serial.println(" connected!");
 }
 
 // ---- Setup Sinric Pro ----
 void setupSinricPro() {
   pumpSwitch.onPowerState(onPowerState);
 
-  SinricPro.onConnected([] { Serial.println("[SinricPro]: Conectado"); });
-  SinricPro.onDisconnected([] { Serial.println("[SinricPro]: Desconectado"); });
+  SinricPro.onConnected([] { Serial.println("[SinricPro]: Connected"); });
+  SinricPro.onDisconnected([] { Serial.println("[SinricPro]: Disconnected"); });
   SinricPro.begin(APP_KEY, APP_SECRET);
 }
 
 // ---- Arduino Setup ----
 void setup() {
-  Serial.begin(BAUD_RATE); // Usando BAUD_RATE definido
+  Serial.begin(115200);
   pinMode(RELAY_PIN, OUTPUT);
   // Garante que a bomba comece DESLIGADA. 
   // Se o relé liga com HIGH, deve iniciar com LOW.
   digitalWrite(RELAY_PIN, LOW); 
   pinMode(SOIL_PIN, INPUT);
-  
+ 
   setupWiFi();
   setupSinricPro();
 }
 
 // ---- Arduino Loop ----
 void loop() {
-  // **ALTERAÇÃO AQUI:** Removida a linha incorreta que imprimia o número do pino.
-  // A leitura real do sensor e a porcentagem serão mostradas pela função handleSoilMoisture().
-  
+   Serial.printf("Leitura ADC: %d ",SOIL_PIN );
   SinricPro.handle();
   handleSoilMoisture();
 }

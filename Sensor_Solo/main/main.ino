@@ -27,7 +27,7 @@ const int LIMITE_UMIDADE_MINIMA = 70; // Em %. A bomba liga se a umidade for MEN
 // --- Configurações Sinric Pro e Wi-Fi ---
 #define APP_KEY    "89cda427-c430-4127-9a60-afd89f2364d7"
 #define APP_SECRET "a4993c6e-91d9-4b84-97f6-373c1d78789b-72975cde-8f6e-4ff5-b9a1-b67a298291b5"
-#define DEVICE_ID  "68daf7175918d860c09da1fb"
+#define DEVICE_ID  "68df50c05918d860c09f0b6c"
 #define SSID       "BRUGER_2G"
 #define PASS       "Gersones68"
 #define BAUD_RATE  115200
