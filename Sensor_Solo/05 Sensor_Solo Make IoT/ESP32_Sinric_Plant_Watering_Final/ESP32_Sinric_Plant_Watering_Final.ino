@@ -1,141 +1,40 @@
 /***********************************************************************
- * TITLE: Plant Watering system using ESP32 Sinric Pro, Moisture Sensor
- * (For Active-LOW Relay module with Active-HIGH logic override)
- * * Este código mescla a funcionalidade original do SinricPro para controle
- * de bomba e leitura de sensor de umidade do solo, com uma interface
- * web local moderna para visualização e controle de dados do DHT.
- *
- * Créditos originais do SinricPro: Tech StudyCell (links abaixo)
- * YouTube Video: https://youtu.be/MmbmNIKxfEI
- * Related Blog : https://iotcircuithub.com/esp32-projects/
- *
- * Bibliotecas necessárias:
- * - SinricPro Library (instale via Gerenciador de Bibliotecas)
- * - ESPAsyncWebServer (instale via Gerenciador de Bibliotecas)
- * - AsyncTCP (dependência do ESPAsyncWebServer, instale via Gerenciador de Bibliotecas)
- * - CapacitiveSoilMoistureSensor.h (sua biblioteca customizada, deve estar na pasta do sketch)
- * - DHT sensor library (instale via Gerenciador de Bibliotecas)
+ * PROJETO: Estação de Irrigação e Monitoramento Ambiental
+ * DESCRIÇÃO: Controla uma bomba e monitora a umidade do solo, 
+ * temperatura e umidade do ar com uma interface web moderna e Alexa.
  ***********************************************************************/
 
+// --- Bibliotecas ---
 #include <Arduino.h>
 #include <WiFi.h>
-#include <SinricPro.h>
-#include <SinricProSwitch.h>
-#include <ESPAsyncWebServer.h> // Para o servidor web local
-#include "CapacitiveSoilMoistureSensor.h" // Sua biblioteca customizada para o sensor de solo
-#include <DHT.h> // Biblioteca para o sensor DHT
+#include <ESPAsyncWebServer.h>
+#include <DHT.h>
+#include <SinricPro.h>         // NOVO: Biblioteca do Sinric Pro
+#include <SinricProSwitch.h>   // NOVO: Biblioteca para dispositivo tipo "Switch"
 
-// --- Credenciais e IDs ---
-#define WIFI_SSID       "BRUGER_2G"
-#define WIFI_PASS       "Gersones68"
-#define APP_KEY         "89cda427-c430-4127-9a60-afd89f2364d7"
-#define APP_SECRET      "a4993c6e-91d9-4b84-97f6-373c1d78789b-72975cde-8f6e-4ff5-b9a1-b67a298291b5"
-#define PUMP_DEVICE_ID  "68df4f4a5918d860c09f0b00"
-#define SOIL_DEVICE_ID  "68df50c05918d860c09f0b6c"
+// --- Configurações de Rede ---
+#define SSID "BRUGER_2G"
+#define PASS "Gersones68"
 
-// ---- Hardware Pins ----
-const int RELAY_PIN = 12;   // Relay for pump (active HIGH)
-const int SOIL_PIN  = 34;   // Soil sensor ADC pin
-const int DHT_PIN   = 27;   // Pino para o sensor DHT22
-#define DHTTYPE     DHT22   // Define o tipo de sensor DHT (DHT11, DHT21, DHT22)
+// --- Credenciais SinricPro (COLOQUE AS SUAS AQUI) ---
+#define APP_KEY    "SEU-APP-KEY"      // NOVO: Cole seu App Key do portal Sinric
+#define APP_SECRET "SEU-APP-SECRET"   // NOVO: Cole seu App Secret do portal Sinric
+#define SWITCH_ID  "SEU-DEVICE-ID"    // NOVO: Cole o ID do seu dispositivo (Switch)
 
-// ---- Calibration values (adjust for your sensor) ----
-const int VERY_DRY  = 2910;
-const int NEITHER_DRY_OR_WET = 2098;
-const int VERY_WET  = 925;
-const int DRY_PUSH_NOTIFICATION_THRESHHOLD = 2850;
-const int UNPLUGGED = 3000;
+// --- Configurações de Hardware ---
+const int RELAY_PIN = 12; // Pino do relé para a bomba
+const int SOIL_PIN  = 34; // Pino do sensor de umidade do solo
+const int DHT_PIN   = 27; // Pino para o sensor DHT22
 
-// ---- Globals (compartilhadas entre SinricPro e Web Server) ----
-int lastSoilMoisture = 0; // Usado pelo SinricPro para detectar mudanças e para o Web Server
-String lastSoilState = ""; // Usado pelo SinricPro para detectar mudanças
+// --- Objetos e Variáveis Globais ---
+DHT dht(DHT_PIN, DHT22);   
 
-// Variáveis para a interface web (e para o DHT)
-bool  pumpState   = false; // Estado atual da bomba
-float temperature = 0.0;   // Armazena a leitura de temperatura do DHT
-float humidity    = 0.0;   // Armazena a leitura de umidade do ar do DHT
+bool  pumpState = false; // Estado atual da bomba (false = desligada)
+int   soilMoistureValue = 0;
+float temperature = 0.0;
+float humidity    = 0.0;
 
-// Objetos de sensores
-DHT dht(DHT_PIN, DHTTYPE); // Objeto do sensor DHT
-
-// Objetos SinricPro (DO NOT ALTERAR)
-CapacitiveSoilMoistureSensor &soilSensor = SinricPro[SOIL_DEVICE_ID];
-SinricProSwitch &pumpSwitch = SinricPro[PUMP_DEVICE_ID];
-
-// Objeto do Servidor Web
-AsyncWebServer server(80); // Objeto do servidor web assíncrono
-
-// ---- Pump Control (DO NOT ALTERAR) ----
-bool onPowerState(const String& deviceId, bool &state) {
-  if (deviceId == PUMP_DEVICE_ID) {
-    digitalWrite(RELAY_PIN, state ? HIGH : LOW); // Agora HIGH liga a bomba, LOW desliga
-    pumpState = state; // Sincroniza o estado global da bomba
-    Serial.printf("Pump %s\r\n", state ? "ON" : "OFF");
-  }
-  return true;
-}
-
-// ---- Soil Sensor Handler (DO NOT ALTERAR) ----
-void handleSoilMoisture() {
-  if (!SinricPro.isConnected()) return;
-
-  static unsigned long lastMillis = 0;
-  if (millis() - lastMillis < 60000) return;   // every 60 sec 
-  lastMillis = millis();
-
-  int rawValue = analogRead(SOIL_PIN);
-  int percentage = map(rawValue, VERY_DRY, VERY_WET, 0, 100); // Mapeamento: VERY_DRY (alto ADC) -> 0%, VERY_WET (baixo ADC) -> 100%
-  percentage = constrain(percentage, 1, 100);
-
-  Serial.printf("Soil ADC: %d | Moisture: %d%%\r\n", rawValue, percentage);
-
-  if (rawValue == lastSoilMoisture) {
-    Serial.println("No change in soil moisture, skipping update...");
-    return;
-  }
-
-  String soilState = (rawValue > NEITHER_DRY_OR_WET) ? "Wet" : "Dry"; // Se rawValue alto (mais seco), agora é "Wet", senão "Dry"
-  if (soilState != lastSoilState) {
-    soilSensor.sendModeEvent("modeInstance1", soilState, "PHYSICAL_INTERACTION");
-    lastSoilState = soilState;
-  }
-
-  soilSensor.sendRangeValueEvent("rangeInstance1", percentage);
-
-  if (rawValue > DRY_PUSH_NOTIFICATION_THRESHHOLD) {
-    soilSensor.sendPushNotification("Plants are too dry. Please water them!");
-  }
-  if (rawValue > UNPLUGGED) {
-    soilSensor.sendPushNotification("Soil sensor may be unplugged!");
-  }
-
-  lastSoilMoisture = rawValue; // Atualiza o último valor de umidade do solo processado
-}
-
-// ---- Setup WiFi (DO NOT ALTERAR) ----
-void setupWiFi() {
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.printf("[WiFi]: Connecting to %s", WIFI_SSID);
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(300);
-  }
-  Serial.println(" connected!");
-  // O IP dinâmico é impresso aqui, como no seu código original
-  Serial.print("[IP Dinâmico]: ");
-  Serial.println(WiFi.localIP());
-}
-
-// ---- Setup Sinric Pro (DO NOT ALTERAR) ----
-void setupSinricPro() {
-  pumpSwitch.onPowerState(onPowerState);
-
-  SinricPro.onConnected([] { Serial.println("[SinricPro]: Connected"); });
-  SinricPro.onDisconnected([] { Serial.println("[SinricPro]: Disconnected"); });
-  SinricPro.begin(APP_KEY, APP_SECRET);
-}
+AsyncWebServer server(80);
 
 // =================================================================
 // --- PÁGINA WEB (HTML, CSS, JAVASCRIPT) ---
@@ -143,169 +42,100 @@ void setupSinricPro() {
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="pt-br">
-
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Painel de Irrigação IoT</title>
-
     <style>
-        :root {
-            --cor-primaria: #0b9dac;
-            --cor-fundo: #001f21;
-            --cor-card: #012526;
-            --cor-texto: #e4e4e4;
+        :root { 
+            --cor-primaria: #0b9dac; 
+            --cor-fundo: #001f21; 
+            --cor-card: #012526; 
+            --cor-texto: #e4e4e4; 
             --cor-gauge-fundo: #084e55;
         }
-
-        body {
-            font-family: sans-serif;
-            background: var(--cor-fundo);
-            color: var(--cor-texto);
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
+        body { 
+            font-family: sans-serif; 
+            background: var(--cor-fundo); 
+            color: var(--cor-texto); 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-start; 
             min-height: 100vh;
             margin: 0;
             padding: 20px;
             box-sizing: border-box;
         }
-
-        .container {
-            max-width: 800px;
-            width: 100%;
+        .container { max-width: 800px; width: 100%; }
+        h1 { color: #fff; text-align: center; }
+        .card { 
+            background: var(--cor-card); 
+            padding: 25px; 
+            border-radius: 8px; 
+            border-top: 3px solid var(--cor-primaria); 
         }
-
-        h1 {
-            color: #fff;
-            text-align: center;
-        }
-
-        .card {
-            background: var(--cor-card);
-            padding: 25px;
-            border-radius: 8px;
-            border-top: 3px solid var(--cor-primaria);
-        }
-
-        .content-grid {
+        .content-grid { 
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             justify-items: center;
-            align-items: center;
-            gap: 40px;
+            align-items: center; 
+            gap: 40px; 
         }
-
-        .control-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
+        .control-container { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 15px; 
         }
-
-        .pump-button {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all .3s;
+        .pump-button { 
+            width: 100px; 
+            height: 100px; 
+            border-radius: 50%; 
+            border: 2px solid rgba(255,255,255,0.1); 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            transition: all 0.3s; 
             background-color: transparent;
         }
-
-        .pump-button svg {
-            width: 50px;
-            height: 50px;
-            stroke: currentColor;
+        .pump-button svg { width: 50px; height: 50px; stroke: currentColor; }
+        .pump-off { color: var(--cor-gauge-fundo); }
+        .pump-on { color: var(--cor-primaria); filter: drop-shadow(0 0 12px var(--cor-primaria)); }
+        
+        .gauge-wrapper { display: flex; flex-direction: column; align-items: center; }
+        .gauge { position: relative; width: 150px; height: 150px; }
+        .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .gauge .circle-bg { fill: none; stroke: var(--cor-gauge-fundo); stroke-width: 4; }
+        .gauge .circle { fill: none; stroke: var(--cor-primaria); stroke-width: 4; stroke-linecap: round; transition: stroke-dasharray 0.5s ease; }
+        .gauge .gauge-value { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            font-size: 1.8rem; 
+            font-weight: 700; 
         }
-
-        .pump-off {
-            color: var(--cor-gauge-fundo);
-        }
-
-        .pump-on {
-            color: var(--cor-primaria);
-            filter: drop-shadow(0 0 12px var(--cor-primaria));
-        }
-
-        .gauge-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .gauge {
-            position: relative;
-            width: 150px;
-            height: 150px;
-        }
-
-        .gauge svg {
-            width: 100%;
-            height: 100%;
-            transform: rotate(-90deg);
-        }
-
-        .gauge .circle-bg {
-            fill: none;
-            stroke: var(--cor-gauge-fundo);
-            stroke-width: 4;
-        }
-
-        .gauge .circle {
-            fill: none;
-            stroke: var(--cor-primaria);
-            stroke-width: 4;
-            stroke-linecap: round;
-            transition: stroke-dasharray .5s ease;
-        }
-
-        .gauge .gauge-value {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 1.8rem;
-            font-weight: 700;
-        }
-
-        .gauge-label {
-            margin-top: 10px;
-            font-weight: 700;
-            font-size: 1.1rem;
-            text-align: center;
-        }
+        .gauge-label { margin-top: 10px; font-weight: 700; font-size: 1.1rem; text-align: center; }
     </style>
 </head>
-
 <body>
     <div class="container">
-        <header>
-            <h1>Painel de Irrigação IoT</h1>
-        </header>
+        <header><h1>Painel de Irrigação IoT</h1></header>
         <main>
             <div class="card">
                 <div class="content-grid">
-
+                    
                     <div class="control-container">
                         <button id="pumpButton" class="pump-button pump-off" onclick="togglePump()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
-                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-                                <line x1="12" y1="2" x2="12" y2="12"></line>
-                            </svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         </button>
                         <div class="gauge-label">Bomba d'Água</div>
                     </div>
 
                     <div class="gauge-wrapper">
                         <div class="gauge">
-                            <svg viewBox="0 0 36 36">
-                                <path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                                <path class="circle" id="circleSoil" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                            </svg>
+                            <svg viewBox="0 0 36 36"><path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/><path class="circle" id="circleSoil" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/></svg>
                             <div class="gauge-value" id="soilValue">--%</div>
                         </div>
                         <div class="gauge-label">Umidade do Solo</div>
@@ -313,10 +143,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 
                     <div class="gauge-wrapper">
                         <div class="gauge">
-                            <svg viewBox="0 0 36 36">
-                                <path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                                <path class="circle" id="circleTemp" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                            </svg>
+                            <svg viewBox="0 0 36 36"><path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/><path class="circle" id="circleTemp" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/></svg>
                             <div class="gauge-value" id="tempValue">--°C</div>
                         </div>
                         <div class="gauge-label">Temperatura</div>
@@ -324,130 +151,142 @@ const char index_html[] PROGMEM = R"rawliteral(
 
                     <div class="gauge-wrapper">
                         <div class="gauge">
-                            <svg viewBox="0 0 36 36">
-                                <path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                                <path class="circle" id="circleHumidity" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84" />
-                            </svg>
+                            <svg viewBox="0 0 36 36"><path class="circle-bg" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/><path class="circle" id="circleHumidity" stroke-dasharray="0, 100" d="M18 2.08a15.92 15.92 0 0 1 0 31.84a15.92 15.92 0 0 1 0-31.84"/></svg>
                             <div class="gauge-value" id="humidityValue">--%</div>
                         </div>
                         <div class="gauge-label">Umidade do Ar</div>
                     </div>
-                    
+
                 </div>
             </div>
         </main>
     </div>
-
     <script>
         function togglePump() {
-            fetch("/toggle_pump");
+            fetch('/toggle_pump');
         }
 
         function updateSensorData() {
-            fetch("/data")
+            fetch('/data')
                 .then(response => response.json())
                 .then(data => {
                     // Atualiza o botão da bomba
-                    const pumpBtn = document.getElementById("pumpButton");
-                    pumpBtn.classList.toggle("pump-on", data.pumpState);
-                    pumpBtn.classList.toggle("pump-off", !data.pumpState);
-                    
+                    const pumpBtn = document.getElementById('pumpButton');
+                    pumpBtn.classList.toggle('pump-on', data.pumpState);
+                    pumpBtn.classList.toggle('pump-off', !data.pumpState);
+
                     // Atualiza o medidor de umidade do solo
-                    const moisturePercent = data.soilPercent;
-                    document.getElementById("soilValue").textContent = moisturePercent.toFixed(0) + "%";
-                    document.getElementById("circleSoil").setAttribute("stroke-dasharray", moisturePercent.toFixed(0) + ", 100");
+                    const moisturePercent = 100 - ((data.soilMoisture / 4095) * 100);
+                    document.getElementById('soilValue').textContent = moisturePercent.toFixed(0) + '%';
+                    document.getElementById('circleSoil').setAttribute('stroke-dasharray', moisturePercent.toFixed(0) + ', 100');
                     
                     // Atualiza o medidor de temperatura
-                    const tempPercent = data.temperature / 50 * 100; // Mapeia 0-50°C para 0-100%
-                    document.getElementById("tempValue").textContent = data.temperature.toFixed(1) + "°C";
-                    document.getElementById("circleTemp").setAttribute("stroke-dasharray", Math.min(100, Math.max(0, tempPercent)).toFixed(0) + ", 100");
-                    
+                    const tempPercent = (data.temperature / 50) * 100; // Mapeia 0-50°C para 0-100%
+                    document.getElementById('tempValue').textContent = data.temperature.toFixed(1) + '°C';
+                    document.getElementById('circleTemp').setAttribute('stroke-dasharray', tempPercent.toFixed(0) + ', 100');
+
                     // Atualiza o medidor de umidade do ar
-                    document.getElementById("humidityValue").textContent = data.humidity.toFixed(1) + "%";
-                    document.getElementById("circleHumidity").setAttribute("stroke-dasharray", data.humidity.toFixed(0) + ", 100");
+                    document.getElementById('humidityValue').textContent = data.humidity.toFixed(1) + '%';
+                    document.getElementById('circleHumidity').setAttribute('stroke-dasharray', data.humidity.toFixed(0) + ', 100');
                 })
-                .catch(error => console.error("Erro ao buscar dados:", error));
+                .catch(error => console.error('Erro ao buscar dados:', error));
         }
         
-        setInterval(updateSensorData, 2000); // 2000 ms = 2 segundos
+        setInterval(updateSensorData, 2000);
         window.onload = updateSensorData;
     </script>
 </body>
-
 </html>
 )rawliteral";
 
 
-// --- Funções do Servidor Web Local (NOVO) ---
+// --- NOVO: Callback do SinricPro ---
+// Esta função é chamada quando você dá um comando de voz para a Alexa
+bool onPowerState(const String &deviceId, bool &state) {
+  Serial.printf("Dispositivo %s foi para o estado %s\n", deviceId.c_str(), state ? "ON" : "OFF");
+  pumpState = state;
+  digitalWrite(RELAY_PIN, pumpState);
+  return true; // reporta sucesso
+}
+
+// --- Funções do Servidor Web ---
+
+// Envia a página web principal para o cliente
 void handleRoot(AsyncWebServerRequest *request) {
     request->send_P(200, "text/html", index_html);
 }
 
+// Envia os dados de estado e sensores em formato JSON
 void handleData(AsyncWebServerRequest *request) {
-    // Lê o sensor DHT APENAS para a interface web
-    float currentTemp = dht.readTemperature();
-    float currentHum = dht.readHumidity();
+    // Lê os sensores
+    soilMoistureValue = analogRead(SOIL_PIN);
+    temperature = dht.readTemperature();
+    humidity = dht.readHumidity();
 
-    if (isnan(currentTemp) || isnan(currentHum)) {
-        Serial.println("[DHT Web] Falha ao ler do sensor DHT para a web! Usando últimos valores.");
-        // Mantém os valores antigos de 'temperature' e 'humidity' se a leitura falhar
-    } else {
-        temperature = currentTemp; // Atualiza a variável global para a web
-        humidity = currentHum;     // Atualiza a variável global para a web
+    if (isnan(temperature) || isnan(humidity)) {
+        Serial.println("Falha ao ler do sensor DHT!");
     }
-
-    // Usa o valor de umidade do solo atualizado pela função SinricPro
-    int soilPercent = map(lastSoilMoisture, VERY_DRY, VERY_WET, 0, 100);
-    soilPercent = constrain(soilPercent, 0, 100);
 
     String json = "{";
     json += "\"pumpState\":" + String(pumpState ? "true" : "false") + ",";
-    json += "\"soilPercent\":" + String(soilPercent) + ",";
-    json += "\"temperature\":" + String(temperature, 1) + ","; // Agora usa a leitura do DHT
-    json += "\"humidity\":" + String(humidity, 1);             // Agora usa a leitura do DHT
+    json += "\"soilMoisture\":" + String(soilMoistureValue) + ",";
+    json += "\"temperature\":" + String(temperature) + ",";
+    json += "\"humidity\":" + String(humidity);
     json += "}";
     request->send(200, "application/json", json);
 }
 
+// Alterna o estado do relé (bomba)
 void handleTogglePump(AsyncWebServerRequest *request) {
-    pumpState = !pumpState; // Alterna o estado global da bomba
-    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW); // Controla o relé com base no novo estado
-    Serial.printf("[Web] Bomba alterada para: %s\n", pumpState ? "ON" : "OFF");
-    
-    // Sincroniza a mudança com o SinricPro (DO NOT ALTERAR)
-    pumpSwitch.sendPowerStateEvent(pumpState); 
-    
+    pumpState = !pumpState;
+    digitalWrite(RELAY_PIN, pumpState);
     request->send(200, "text/plain", "OK");
+
+    // NOVO: Notifica o SinricPro sobre a mudança de estado feita pela página web
+    // Isso mantém a Alexa e o App Sinric sincronizados com o estado real da bomba
+    SinricProSwitch &mySwitch = SinricPro.getSwitch(SWITCH_ID);
+    mySwitch.sendPowerStateEvent(pumpState); 
 }
 
 
-// ---- Arduino Setup ----
+// --- Função Principal de SETUP ---
 void setup() {
-  Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW); // Pump OFF at start for active HIGH relay
-  pinMode(SOIL_PIN, INPUT);
-  dht.begin(); // Inicializa o sensor DHT para uso na web
-  
-  setupWiFi();
-  setupSinricPro();
+    Serial.begin(115200);
+    dht.begin();
 
-  // Configura as rotas do servidor web local
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/data", HTTP_GET, handleData);
-  server.on("/toggle_pump", HTTP_GET, handleTogglePump);
-  server.begin(); // Inicia o servidor web
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, pumpState); 
+
+    // NOVO: Configuração do dispositivo SinricPro
+    SinricProSwitch &mySwitch = SinricPro.addSwitch(SWITCH_ID, "Bomba d'Agua");
+    mySwitch.onPowerState(onPowerState); // Associa o dispositivo à função de callback
+
+    // Conecta ao Wi-Fi
+    WiFi.begin(SSID, PASS);
+    Serial.printf("\n[WiFi] Conectando a %s", SSID);
+    while (WiFi.status() != WL_CONNECTED) {
+        Serial.print(".");
+        delay(500);
+    }
+    Serial.println("\n[WiFi] Conectado!");
+    Serial.print("[IP] Endereço: ");
+    Serial.println(WiFi.localIP());
+
+    // NOVO: Inicia a conexão com o servidor SinricPro
+    SinricPro.begin(APP_KEY, APP_SECRET);
     
-  Serial.println("[Server] Servidor Web local iniciado.");
-  // NOVO: Mensagem com o IP fixo para acesso ao painel web
-  Serial.println("Acesse o painel web em: http://192.168.0.116/"); 
-  Serial.println("Setup finalizado. Sistema pronto.");
+    // Configura as rotas do servidor web
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/data", HTTP_GET, handleData);
+    server.on("/toggle_pump", HTTP_GET, handleTogglePump);
+    
+    // Inicia o servidor web
+    server.begin();
+    Serial.println("[SERVER] Servidor Web iniciado.");
 }
 
-// ---- Arduino Loop ----
+// --- Função Principal de LOOP ---
 void loop() {
-  SinricPro.handle();       // Mantém a conexão SinricPro (DO NOT ALTERAR)
-  handleSoilMoisture();     // Lida com o sensor de solo e envia para SinricPro (DO NOT ALTERAR)
-  // A leitura do DHT agora é feita diretamente em handleData() quando a web solicita.
-  // Isso evita leituras desnecessárias se ninguém estiver visualizando a página web.
+    // ALTERADO: O loop agora precisa processar as mensagens do SinricPro
+    SinricPro.handle();
 }
