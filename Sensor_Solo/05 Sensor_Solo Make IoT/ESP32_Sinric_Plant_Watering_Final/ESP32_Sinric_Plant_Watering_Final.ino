@@ -21,7 +21,7 @@
 #define APP_SECRET "SEU-APP-SECRET"   // NOVO: Cole seu App Secret do portal Sinric
 #define SWITCH_ID  "SEU-DEVICE-ID"    // NOVO: Cole o ID do seu dispositivo (Switch)
 
-// --- Configurações de Hardware ---
+// --- Configurações de Hardware ---c:\Repo2024\esp8266\Sensor_Solo\05 Sensor_Solo Make IoT\ESP32_Sinric_Plant_Watering_Final02
 const int RELAY_PIN = 12; // Pino do relé para a bomba
 const int SOIL_PIN  = 34; // Pino do sensor de umidade do solo
 const int DHT_PIN   = 27; // Pino para o sensor DHT22
