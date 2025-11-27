@@ -11,9 +11,9 @@ Este projeto implementa uma estação de irrigação e monitoramento ambiental u
 - Temperatura e umidade do ar (sensor DHT22)
 
 E controla:
-- Uma bomba d'água via módulo de relé
+- Uma valvula solenoide (uma bobina elétrica) para controlar o fluxo de água via módulo de relé
 
-O dispositivo oferece uma interface web com visualização em tempo real e integração com Alexa/SinricPro para controle por voz.
+O dispositivo oferece uma interface web com visualização em tempo real via SinricPro.
 
 ## Principais arquivos
 - `ESP32_Sinric_Plant_Watering_Final.ino` — sketch principal (web UI, leitura de sensores, SinricPro)
@@ -23,7 +23,7 @@ O dispositivo oferece uma interface web com visualização em tempo real e integ
 - Interface web responsiva com gauges de solo, temperatura e umidade.
 - Botão na interface para alternar a bomba.
 - Endpoint `/data` que retorna JSON com leituras e estado atual.
-- Integração com SinricPro para controle por voz (dispositivo tipo Switch).
+- Integração com SinricPro para controle  via celular (dispositivo tipo Switch).
 
 ## Hardware necessário
 - ESP32 (qualquer placa compatível com ADC 12-bit)
@@ -61,7 +61,7 @@ Observação: ajuste os pinos conforme sua placa.
 ## Endpoints HTTP disponíveis
 - `/` — Página web principal (HTML/CSS/JS integrada no sketch)
 - `/data` — Retorna JSON com o estado e leituras: `{ pumpState, soilMoisture, temperature, humidity }`
-- `/toggle_pump` — Alterna o estado da bomba (usado pelo botão na página web)
+- `/toggle_pump` — Alterna o estado da valvula (usado pelo botão na página web)
 
 ## Como a interface web interpreta os valores
 - `soilMoisture` é o valor bruto do ADC do ESP32 (0–4095). A página converte para porcentagem com a fórmula usada no JS:
@@ -90,9 +90,9 @@ void applyPumpState(bool state) {
 ## Sugestões e melhorias
 - Tratar `NaN` nas leituras do DHT e retornar JSON consistente (ex.: `null`).
 - Implementar calibração do sensor de solo (valores secos/molhados) e mapear corretamente para porcentagem.
-- Prevenir ciclos rápidos liga/desliga na bomba (histerese ou tempo mínimo ligado/desligado).
+- Prevenir ciclos rápidos liga/desliga na valvula (histerese ou tempo mínimo ligado/desligado).
 - Adicionar autenticação básica à interface web se exposta na rede.
-- Persistir histórico de leituras localmente ou enviar para serviço de nuvem (ThingSpeak, InfluxDB, etc.).
+- Persistir histórico de leituras localmente ou enviar para serviço de nuvem ().
 
 ## Segurança e cuidados
 - Nunca alimente a bomba diretamente do ESP32; use o relé corretamente isolado e uma fonte separada.
