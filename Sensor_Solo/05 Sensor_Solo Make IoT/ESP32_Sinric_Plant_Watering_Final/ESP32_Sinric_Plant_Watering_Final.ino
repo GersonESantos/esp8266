@@ -65,6 +65,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             margin: 0;
             padding: 20px;
             box-sizing: border-box;
+
+                
         }
         .container { max-width: 800px; width: 100%; }
         h1 { color: #fff; text-align: center; }
